@@ -3,8 +3,8 @@ sublime-MoveBetter
 
 A Sublime Text 2 plugin extension to the move command
 
-A new command is added, `"move_better"`.  This takes the same arguments as the built-in 
-`"move"` command, but adds additional functionality.
+A new command is added, `"move_better"`.  This extends the `"args"` of the built-in 
+`"move"` command with additional functionality.
 
 
 Moving by Paragraph
