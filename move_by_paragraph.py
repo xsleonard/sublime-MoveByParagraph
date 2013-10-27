@@ -49,30 +49,22 @@ class MyCommand(TextCommand):
         return self.view.sel()[0]
 
 
-class MoveBetterCommand(MyCommand):
-    def run(self, edit, **kwargs):
-        """ The built-in move command is extended with an additional
-        "by" option, "paragraph".  This option implies "empty_line": True,
-        so there is no need to set it.
-
+class MoveByParagraphCommand(MyCommand):
+    def run(self, edit, extend=False, forward=False):
+        """
         The cursor will move to beginning of a non-empty line that succeeds
         an empty one.  Selection is supported when "extend" is True.
         """
         cursor = self.get_cursor()
-        by = kwargs.get('by')
-        if by == 'paragraph':
-            kwargs['by'] = 'stops'
-            kwargs['empty_line'] = True
-        self.view.run_command('move', kwargs)
-        if by == 'paragraph':
-            self.set_paragraph_cursor(cursor, **kwargs)
+        self.move_args = {"by": "stops", "forward": forward,
+                          "empty_line": True, "extend": extend}
+        self.view.run_command('move', self.move_args)
+        self.set_paragraph_cursor(cursor, extend=extend, forward=forward)
 
-    def set_paragraph_cursor(self, cursor, **kwargs):
+    def set_paragraph_cursor(self, cursor, extend=False, forward=False):
         """ Readjusts the final cursor placement after navigating by
         "stops" to a "paragraph" based position.
         """
-        extend = kwargs.get('extend', False)
-        forward = kwargs.get("forward", False)
         currcursor = cursor.begin()
         if extend and forward:
             currcursor = cursor.end()
@@ -105,7 +97,7 @@ class MoveBetterCommand(MyCommand):
                         self.set_selection_to(cursor.end(), pos)
                     else:
                         self.set_cursor_to(pos)
-                    self.view.run_command("move", kwargs)
+                    self.view.run_command("move", self.move_args)
                     pos = self.get_cursor().begin()
                     if pos:
                         pos += 1
