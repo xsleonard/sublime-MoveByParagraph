@@ -7,9 +7,9 @@ from collections import Iterable
 DEBUG = False
 
 
-def dbg(msg):
+def dbg(*msg):
     if DEBUG:
-        print(msg)
+        print(' '.join(map(str, msg)))
 
 
 class MyCommand(TextCommand):
@@ -50,79 +50,74 @@ class MyCommand(TextCommand):
 
 
 class MoveByParagraphCommand(MyCommand):
+
+    def _find_paragraph_position_forward(self, start):
+        size = self.view.size()
+        r = Region(start, size)
+        lines = self.view.split_by_newlines(r)
+        found_empty = False
+        stop_line = None
+        for n, line in enumerate(lines):
+            s = self.view.substr(line)
+            if (not s and self.view.substr(max(0, line.begin() - 1)) == '\n'
+                    and n):
+                found_empty = True
+            elif found_empty:
+                stop_line = line
+                break
+        if stop_line is None:
+            if self.view.substr(Region(size - 1, size)) == '\n':
+                # We want to jump to the very end if we reached the file and
+                # it ends with a newline.  If the file ends with a newline,
+                # the lines array does not end with u'' as expected, which is
+                # why we need to do this
+                stop_line = Region(size, size)
+            else:
+                stop_line = lines[-1]
+        return stop_line
+
+    def _find_paragraph_position_backward(self, start):
+        r = Region(0, start)
+        lines = self.view.split_by_newlines(r)
+        lines.reverse()
+        last_line = None
+        last_str = u''
+        stop_line = None
+        for line in lines:
+            s = self.view.substr(line)
+            if (not s and last_str and last_line is not None and
+                    lines[0] != last_line):
+                stop_line = last_line
+                break
+            last_line = line
+            last_str = s
+        if stop_line is None:
+            stop_line = lines[-1]
+        return stop_line
+
+    def find_paragraph_position(self, start, forward=False):
+        dbg('Starting from {0}'.format(start))
+        if forward:
+            return self._find_paragraph_position_forward(start)
+        else:
+            return self._find_paragraph_position_backward(start)
+
     def run(self, edit, extend=False, forward=False):
         """
         The cursor will move to beginning of a non-empty line that succeeds
         an empty one.  Selection is supported when "extend" is True.
         """
         cursor = self.get_cursor()
-        self.move_args = {"by": "stops", "forward": forward,
-                          "empty_line": True, "extend": extend}
-        self.view.run_command('move', self.move_args)
-        self.set_paragraph_cursor(cursor, extend=extend, forward=forward)
-
-    def set_paragraph_cursor(self, cursor, extend=False, forward=False):
-        """ Readjusts the final cursor placement after navigating by
-        "stops" to a "paragraph" based position.
-        """
-        currcursor = cursor.begin()
-        if extend and forward:
-            currcursor = cursor.end()
-        currline = self.get_line_at(currcursor)
-        s = self.get_cursor()
-        if forward:
-            pos = s.end()
+        if cursor.a < cursor.b:
+            start = cursor.end()
         else:
-            pos = s.begin()
-        size = self.view.size()
-
-        if forward:
-            while self.get_char_at(pos) == '\n' and pos < size:
-                pos += 1
-        else:
-            if (currline > self.get_line_at(pos + 1) and pos and
-                    self.get_char_at(pos + 1) != '\n'):
-                # If we are jumping from underneath a spot we should stop
-                pos += 1
-            else:
-                # If we are jumping from a stopline or higher, skim past all
-                # upper newlines and into the next true block
-                while self.get_char_at(pos) == '\n' and pos > 0:
-                    pos -= 1
-                # We reached the end of the upper block, move past that
-                # line's newline and back into the highest level newline
-                if pos:
-                    pos += 2
-                    if extend:
-                        self.set_selection_to(cursor.end(), pos)
-                    else:
-                        self.set_cursor_to(pos)
-                    self.view.run_command("move", self.move_args)
-                    pos = self.get_cursor().begin()
-                    if pos:
-                        pos += 1
+            start = cursor.begin()
+        line = self.find_paragraph_position(start, forward=forward)
+        dbg('Stopping at {0}'.format(self.view.substr(line)))
 
         if extend:
-            # Doing a block selection
-            if forward:
-                # Moving down the page,
-                # Start at where the initial cursor was
-                start = cursor.begin()
-                # End at where we calculated our paragraph cursor to be, but
-                # we don't want to select all the way to the next paragraph
-                end = pos
-                if end != size:
-                    end -= 1
-            else:
-                # Moving up the page,
-                # Start at where we calculated our paragraph cursor to be
-                start = pos
-                if start:
-                    pos -= 1
-                # End at where our initial cursor was
-                end = cursor.end()
-                # Flip the selection so the cursor appears at the correct side
-                start, end = end, start
-            self.set_selection_to(start, end)
+            self.set_selection_to(cursor.a, line.begin())
         else:
-            self.set_cursor_to(max(0, min(size, pos)))
+            self.set_cursor_to(line.begin())
+        cursor = self.get_cursor()
+        self.view.show(cursor)
