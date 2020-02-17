@@ -80,20 +80,15 @@ class MoveByParagraphCommand(MyCommand):
         r = Region(0, start)
         lines = self.view.split_by_newlines(r)
         lines.reverse()
-        last_line = None
-        last_str = u''
-        stop_line = None
-        for line in lines:
-            s = self.view.substr(line)
-            if (not s and last_str and last_line is not None and
-                    lines[0] != last_line):
-                stop_line = last_line
-                break
-            last_line = line
-            last_str = s
-        if stop_line is None:
-            stop_line = lines[-1]
-        return stop_line
+
+        for n, line in enumerate(lines[:-1]):
+            if self._line_is_paragraph(line, lines[n+1]):
+                return line
+
+        return lines[-1]
+
+    def _line_is_paragraph(self, line, line_above):
+        return self.view.substr(line) and not self.view.substr(line_above)
 
     def find_paragraph_position(self, start, forward=False):
         dbg('Starting from {0}'.format(start))
