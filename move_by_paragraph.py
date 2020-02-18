@@ -1,5 +1,5 @@
 from __future__ import print_function
-from sublime import Region
+from sublime import Region, load_settings
 from sublime_plugin import TextCommand
 from collections import Iterable
 
@@ -51,68 +51,118 @@ class MyCommand(TextCommand):
 
 class MoveByParagraphCommand(MyCommand):
 
-    def _find_paragraph_position_forward(self, start):
-        size = self.view.size()
-        r = Region(start, size)
-        lines = self.view.split_by_newlines(r)
-        found_empty = False
-        stop_line = None
-        for n, line in enumerate(lines):
-            s = self.view.substr(line)
-            if (not s and self.view.substr(max(0, line.begin() - 1)) == '\n'
-                    and n):
-                found_empty = True
-            elif found_empty:
-                stop_line = line
-                break
-        if stop_line is None:
-            if self.view.substr(Region(size - 1, size)) == '\n':
-                # We want to jump to the very end if we reached the file and
-                # it ends with a newline.  If the file ends with a newline,
-                # the lines array does not end with u'' as expected, which is
-                # why we need to do this
-                stop_line = Region(size, size)
-            else:
-                stop_line = lines[-1]
-        return stop_line
-
-    def _find_paragraph_position_backward(self, start):
-        r = Region(0, start)
-        lines = self.view.split_by_newlines(r)
-        lines.reverse()
-
-        for n, line in enumerate(lines[:-1]):
-            if self._line_is_paragraph(line, lines[n+1]):
-                return line
-
-        return lines[-1]
-
-    def _line_is_paragraph(self, line, line_above):
-        return self.view.substr(line) and not self.view.substr(line_above)
-
-    def find_paragraph_position(self, start, forward=False):
-        dbg('Starting from {0}'.format(start))
-        if forward:
-            return self._find_paragraph_position_forward(start)
-        else:
-            return self._find_paragraph_position_backward(start)
-
-    def run(self, edit, extend=False, forward=False):
+    def run(self,
+            edit,
+            extend=False,
+            forward=False,
+            ignore_blank_lines=True,
+            stop_at_paragraph_begin=True,
+            stop_at_paragraph_end=False):
         """
         The cursor will move to beginning of a non-empty line that succeeds
         an empty one.  Selection is supported when "extend" is True.
         """
+        if not stop_at_paragraph_begin and not stop_at_paragraph_end:
+            print('[WARNING] MoveByParagraph: stop_at_paragraph_begin and '
+                  'stop_at_paragraph_end are both False, nothing will happen')
+            return
+
         cursor = self.get_cursor()
         if cursor.a < cursor.b:
             start = cursor.end()
         else:
             start = cursor.begin()
-        line = self.find_paragraph_position(start, forward=forward)
-        dbg('Stopping at {0}'.format(self.view.substr(line)))
+
+        kwargs = dict(ignore_blank_lines=ignore_blank_lines,
+                      stop_at_paragraph_begin=stop_at_paragraph_begin,
+                      stop_at_paragraph_end=stop_at_paragraph_end)
+
+        dbg('Starting from', cursor)
+
+        if forward:
+            next_cursor = self._find_paragraph_position_forward(start,
+                                                                **kwargs)
+        else:
+            next_cursor = self._find_paragraph_position_backward(start,
+                                                                 **kwargs)
+
+        dbg('Stopping at', next_cursor)
 
         if extend:
-            self.set_selection_to(cursor.a, line.begin())
+            dbg('set_selection_to', cursor.a, next_cursor.begin())
+            self.set_selection_to(cursor.a, next_cursor.begin())
         else:
-            self.set_cursor_to(line.begin())
+            dbg('set_cursor_to', next_cursor.begin())
+            self.set_cursor_to(next_cursor.begin())
+
         cursor = self.get_cursor()
         self.view.show(cursor)
+
+    def _find_paragraph_position_forward(self,
+                                         start,
+                                         ignore_blank_lines=True,
+                                         stop_at_paragraph_begin=True,
+                                         stop_at_paragraph_end=False):
+        size = self.view.size()
+        r = Region(start, size)
+        lines = self.view.split_by_newlines(r)
+
+        for n, line in enumerate(lines[:-1]):
+            if (stop_at_paragraph_begin and
+                self._line_begins_paragraph(lines[n+1],
+                                            line,
+                                            ignore_blank_lines)):
+                return Region(lines[n+1].a, lines[n+1].a)
+
+            if (stop_at_paragraph_end and
+                self._line_ends_paragraph(line,
+                                          lines[n+1],
+                                          ignore_blank_lines)):
+                return Region(line.b, line.b)
+
+        # Check if the last line is empty or not
+        # If it is empty, make sure we jump to the end of the file
+        # If it is not empty, jump to the end of the line
+        if self._substr(lines[-1], ignore_blank_lines) == '':
+            return Region(size, size)
+        return Region(lines[-1].b, lines[-1].b)
+
+    def _find_paragraph_position_backward(self,
+                                          start,
+                                          ignore_blank_lines=True,
+                                          stop_at_paragraph_begin=True,
+                                          stop_at_paragraph_end=False):
+        r = Region(0, start)
+        lines = self.view.split_by_newlines(r)
+        lines.reverse()
+
+        for n, line in enumerate(lines[:-1]):
+            if (stop_at_paragraph_begin and
+                self._line_begins_paragraph(line,
+                                            lines[n+1],
+                                            ignore_blank_lines)):
+                return Region(line.a, line.a)
+
+            if (stop_at_paragraph_end and
+                self._line_ends_paragraph(lines[n+1],
+                                          line,
+                                          ignore_blank_lines)):
+                return Region(lines[n+1].b, lines[n+1].b)
+
+        return lines[-1]
+
+    def _line_begins_paragraph(self, line, line_above, ignore_blank_lines):
+        a = self._substr(line, ignore_blank_lines)
+        b = self._substr(line_above, ignore_blank_lines)
+        return a and not b
+
+    def _line_ends_paragraph(self, line, line_below, ignore_blank_lines):
+        a = self._substr(line, ignore_blank_lines)
+        b = self._substr(line_below, ignore_blank_lines)
+        return a and not b
+
+    def _substr(self, line, ignore_blank_lines):
+        s = self.view.substr(line)
+        if ignore_blank_lines:
+            return s.strip()
+        return s
