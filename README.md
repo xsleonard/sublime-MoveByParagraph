@@ -33,5 +33,3 @@ Personally, I remapped that behaviour to `"ctrl+t"` and `"ctrl+g"`.
 ## Suggested Plugins
 
 - [Copy Block](https://sublime.wbond.net/packages/Copy%20Block)
-
-
