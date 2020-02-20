@@ -105,7 +105,9 @@ class MoveByParagraphCommand(MyCommand):
                                          stop_at_paragraph_end=False):
         size = self.view.size()
         r = Region(start, size)
-        lines = self.view.split_by_newlines(r)
+
+        # Obtain the lines that intersect the region
+        lines = self.view.lines(r)
 
         for n, line in enumerate(lines[:-1]):
             if (stop_at_paragraph_begin and
@@ -114,7 +116,8 @@ class MoveByParagraphCommand(MyCommand):
                                             ignore_blank_lines)):
                 return Region(lines[n+1].a, lines[n+1].a)
 
-            if (stop_at_paragraph_end and
+            if (line.b != start and
+                stop_at_paragraph_end and
                 self._line_ends_paragraph(line,
                                           lines[n+1],
                                           ignore_blank_lines)):
@@ -125,7 +128,15 @@ class MoveByParagraphCommand(MyCommand):
         # If it is not empty, jump to the end of the line
         if self._substr(lines[-1], ignore_blank_lines) == '':
             return Region(size, size)
-        return Region(lines[-1].b, lines[-1].b)
+
+        end = lines[-1].b
+
+        # If the file ends with a single newline, it will be stuck
+        # before this newline character unless we do this
+        if end == start:
+            return Region(end+1, end+1)
+
+        return Region(end, end)
 
     def _find_paragraph_position_backward(self,
                                           start,
@@ -133,7 +144,9 @@ class MoveByParagraphCommand(MyCommand):
                                           stop_at_paragraph_begin=True,
                                           stop_at_paragraph_end=False):
         r = Region(0, start)
-        lines = self.view.split_by_newlines(r)
+
+        # Obtain the lines that intersect the region
+        lines = self.view.lines(r)
         lines.reverse()
 
         for n, line in enumerate(lines[:-1]):
@@ -154,10 +167,14 @@ class MoveByParagraphCommand(MyCommand):
     def _line_begins_paragraph(self, line, line_above, ignore_blank_lines):
         a = self._substr(line, ignore_blank_lines)
         b = self._substr(line_above, ignore_blank_lines)
+        dbg('line_above', line_above, self.view.substr(line_above))
+        dbg('line', line, self.view.substr(line))
         return a and not b
 
     def _line_ends_paragraph(self, line, line_below, ignore_blank_lines):
         a = self._substr(line, ignore_blank_lines)
+        dbg('line', line, self.view.substr(line))
+        dbg('line_below', line_below, self.view.substr(line_below))
         b = self._substr(line_below, ignore_blank_lines)
         return a and not b
 
