@@ -1,7 +1,7 @@
 from __future__ import print_function
 from sublime import Region, load_settings
 from sublime_plugin import TextCommand
-from collections import Iterable
+from collections.abc import Iterable
 
 
 DEBUG = False
